@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#f4f6f9">
+<title>账单记录</title>
+<style>
+  :root{
+    --bg:#f4f6f9;
+    --card:#ffffff;
+    --text:#1c2230;
+    --muted:#8b93a3;
+    --line:#e9edf3;
+    --blue:#3b6ef5;
+    --blue-soft:#eaf0ff;
+    --amber:#f59e0b;
+    --amber-soft:#fff3e0;
+    --danger:#e25454;
+    --radius:16px;
+    --shadow:0 2px 10px rgba(28,34,48,.05);
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    font-size:15px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    -webkit-tap-highlight-color:transparent;
+  }
+  body.no-scroll{overflow:hidden}
+  button,input,textarea{font:inherit;color:inherit}
+  button{cursor:pointer;border:0;background:none}
+  button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+  .app{
+    max-width:520px;
+    margin:0 auto;
+    padding:calc(18px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom));
+  }
+  .app-header h1{font-size:24px;margin:0;font-weight:700;letter-spacing:.5px}
+  .app-header .sub{margin:4px 0 20px;color:var(--muted);font-size:13px}
+
+  /* ---------- 汇总 ---------- */
+  .summary{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px}
+  .sum-card{
+    border-radius:var(--radius);padding:16px 14px;box-shadow:var(--shadow);
+    display:flex;flex-direction:column;gap:6px;min-width:0;
+  }
+  .sum-spent{background:linear-gradient(135deg,#eef3ff,#e2ebff)}
+  .sum-wish{background:linear-gradient(135deg,#fff6e8,#ffedcf)}
+  .sum-label{font-size:12px;color:#6b768c}
+  .sum-value{font-size:21px;font-weight:700;font-variant-numeric:tabular-nums;word-break:break-all}
+  .sum-spent .sum-value{color:#2f5fe0}
+  .sum-wish .sum-value{color:#c77b06}
+
+  /* ---------- 列表标题 ---------- */
+  .list-section{margin-bottom:26px}
+  .section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+  .section-head h2{font-size:16px;margin:0;font-weight:650;display:flex;align-items:center;gap:8px}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
+  .dot-spent{background:var(--blue)}
+  .dot-wish{background:var(--amber)}
+  .count{font-size:12px;font-weight:500;color:var(--muted);background:#eceff4;border-radius:999px;padding:1px 8px}
+  .btn-add{
+    min-height:42px;padding:0 15px;border-radius:12px;background:var(--blue);color:#fff;
+    font-size:14px;font-weight:600;box-shadow:0 3px 8px rgba(59,110,245,.22);flex:none;
+  }
+  .btn-add[data-add="wish"]{background:var(--amber);box-shadow:0 3px 8px rgba(245,158,11,.22)}
+  .btn-add:active{transform:translateY(1px)}
+  .hint{margin:-4px 2px 12px;font-size:12px;color:var(--muted)}
+
+  /* ---------- 记录卡片 ---------- */
+  .rows{display:flex;flex-direction:column;gap:10px}
+  .row{
+    position:relative;overflow:hidden;border-radius:var(--radius);
+    background:#e8edf7;box-shadow:var(--shadow);
+  }
+  .row.swipeable{touch-action:pan-y}
+  .swipe-bg{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:flex-end;
+    padding-right:18px;background:linear-gradient(90deg,#f6b64b,#ef8f2f);
+    color:#fff;font-size:13px;font-weight:600;letter-spacing:.5px;
+    opacity:.85;transition:opacity .2s;pointer-events:none;
+  }
+  .swipe-bg.ready{opacity:1}
+  .swipe-bg span{white-space:nowrap}
+  .row-inner{
+    position:relative;z-index:1;background:var(--card);padding:14px 14px 12px;
+    user-select:none;-webkit-user-select:none;will-change:transform;
+  }
+  .row-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+  .row-name{font-size:15px;font-weight:650;word-break:break-all}
+  .row-amount{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .row[data-list="wish"] .row-amount{color:#c77b06}
+  .row[data-list="spent"] .row-amount{color:#2f5fe0}
+  .row-note{margin-top:4px;font-size:12.5px;color:var(--muted);word-break:break-all;white-space:pre-wrap}
+  .row-actions{
+    display:flex;gap:8px;margin-top:12px;padding-top:10px;
+    border-top:1px solid var(--line);flex-wrap:wrap;
+  }
+  .act{
+    min-height:36px;padding:0 13px;border-radius:10px;background:#f2f4f8;
+    font-size:13px;color:#4a5364;font-weight:550;
+  }
+  .act:active{transform:translateY(1px)}
+  .act-pay{background:var(--amber-soft);color:#b56f04}
+  .act-danger{background:#fff0f0;color:var(--danger);margin-left:auto}
+  .act-danger.confirming{background:var(--danger);color:#fff}
+  .empty{
+    padding:28px 14px;text-align:center;color:var(--muted);font-size:13px;
+    background:#fff;border:1px dashed var(--line);border-radius:var(--radius);
+  }
+  .app-footer{text-align:center;color:#aab1bf;font-size:11.5px;padding-top:6px}
+
+  /* ---------- 弹层 ---------- */
+  .overlay{position:fixed;inset:0;z-index:50;display:flex;align-items:flex-end;justify-content:center}
+  .overlay-backdrop{position:absolute;inset:0;background:rgba(18,24,38,.45);animation:fadeIn .18s ease}
+  .sheet{
+    position:relative;width:100%;max-width:520px;background:#fff;
+    border-radius:20px 20px 0 0;
+    padding:18px 18px calc(18px + env(safe-area-inset-bottom));
+    box-shadow:0 -10px 40px rgba(0,0,0,.12);
+    animation:slideUp .22s ease;max-height:90vh;overflow-y:auto;
+  }
+  .sheet-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+  .sheet-head h3{margin:0;font-size:17px;font-weight:700}
+  .icon-btn{
+    width:38px;height:38px;border-radius:50%;background:#f2f4f8;
+    font-size:22px;line-height:1;color:#6b768c;
+    display:flex;align-items:center;justify-content:center;flex:none;
+  }
+
+  /* 表单 */
+  .field{display:block;margin-bottom:14px}
+  .field>span{display:block;font-size:13px;color:#5b6474;margin-bottom:6px;font-weight:550}
+  .field em{font-style:normal;color:var(--muted);font-weight:400;font-size:12px}
+  .field input,.field textarea{
+    width:100%;border:1px solid var(--line);background:#fafbfd;border-radius:12px;
+    padding:11px 12px;font-size:16px;min-height:46px;outline:none;
+    transition:border-color .15s,box-shadow .15s;
+  }
+  .field textarea{resize:vertical;line-height:1.5}
+  .field input:focus,.field textarea:focus{
+    border-color:var(--blue);box-shadow:0 0 0 3px rgba(59,110,245,.12);background:#fff;
+  }
+  .form-error{margin:-4px 0 12px;color:var(--danger);font-size:13px}
+  .sheet-actions{display:flex;gap:10px;margin-top:6px;flex-wrap:wrap}
+  .btn{flex:1 1 130px;min-height:48px;border-radius:12px;font-size:15px;font-weight:600}
+  .btn-primary{background:var(--blue);color:#fff}
+  .btn-ghost{background:#f2f4f8;color:#5b6474}
+  .btn:active{transform:translateY(1px)}
+
+  /* 收款码 */
+  .pay-card{text-align:center}
+  .pay-card .sheet-head{text-align:left}
+  .pay-body{padding:2px 0 4px}
+  .pay-name{font-size:15px;font-weight:650;word-break:break-all}
+  .pay-amount{font-size:32px;font-weight:800;color:#c77b06;margin:4px 0 16px;font-variant-numeric:tabular-nums}
+  .qr-wrap{
+    width:min(240px,72vw);height:min(240px,72vw);margin:0 auto 14px;
+    border:1px solid var(--line);border-radius:16px;background:#fff;
+    display:flex;align-items:center;justify-content:center;padding:10px;
+    box-shadow:0 4px 16px rgba(28,34,48,.06);overflow:hidden;
+  }
+  .qr-wrap img{width:100%;height:100%;object-fit:contain;display:block}
+  .qr-fallback{display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--muted);font-size:13px}
+  .qr-fallback span{font-size:16px;font-weight:650;color:#5b6474}
+  .qr-fallback small{font-size:11.5px;line-height:1.4}
+  .qr-retry{margin-top:4px;color:var(--blue);font-size:13px;text-decoration:underline;min-height:34px}
+  .pay-tip{font-size:15px;margin:0 0 4px}
+  .pay-tip b{color:#c77b06}
+  .pay-note{font-size:12.5px;color:var(--muted);margin:0 0 16px;word-break:break-all}
+  .pay-card .sheet-actions .btn{flex:1 1 100%}
+
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  @keyframes slideUp{from{transform:translateY(24px);opacity:.6}to{transform:translateY(0);opacity:1}}
+  @keyframes popIn{from{transform:scale(.96);opacity:0}to{transform:scale(1);opacity:1}}
+
+  @media (min-width:600px){
+    .overlay{align-items:center}
+    .sheet{border-radius:20px;max-width:420px;padding-bottom:18px;animation:popIn .2s ease}
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="app-header">
+    <h1>账单记录</h1>
+    <p class="sub">随手记下花掉的，和还想买的</p>
+  </header>
+
+  <section class="summary" aria-label="金额汇总">
+    <div class="sum-card sum-spent">
+      <span class="sum-label">已消费总额</span>
+      <strong class="sum-value" id="sumSpent">¥0.00</strong>
+    </div>
+    <div class="sum-card sum-wish">
+      <span class="sum-label">想买总额</span>
+      <strong class="sum-value" id="sumWish">¥0.00</strong>
+    </div>
+  </section>
+
+  <section class="list-section">
+    <div class="section-head">
+      <h2><span class="dot dot-spent"></span>已消费 <span class="count" id="countSpent">0</span></h2>
+      <button class="btn-add" type="button" data-add="spent">+ 添加</button>
+    </div>
+    <div class="rows" id="listSpent"></div>
+  </section>
+
+  <section class="list-section">
+    <div class="section-head">
+      <h2><span class="dot dot-wish"></span>想买清单 <span class="count" id="countWish">0</span></h2>
+      <button class="btn-add" type="button" data-add="wish">+ 添加</button>
+    </div>
+    <p class="hint">← 在卡片上左划（或点「扫码支付」）查看收款码</p>
+    <div class="rows" id="listWish"></div>
+  </section>
+
+  <footer class="app-footer">数据仅保存在本机浏览器 localStorage 中</footer>
+</div>
+
+<!-- 添加 / 编辑记录 -->
+<div class="overlay" id="formOverlay" hidden>
+  <div class="overlay-backdrop" data-close="form"></div>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="formTitle">
+    <div class="sheet-head">
+      <h3 id="formTitle">添加记录</h3>
+      <button class="icon-btn" type="button" data-close="form" aria-label="关闭">×</button>
+    </div>
+    <form id="recordForm" novalidate>
+      <label class="field">
+        <span>名称</span>
+        <input id="fName" type="text" maxlength="60" placeholder="例如：午餐 / 蓝牙耳机" autocomplete="off" required>
+      </label>
+      <label class="field">
+        <span>金额（¥）</span>
+        <input id="fAmount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" required>
+      </label>
+      <label class="field">
+        <span>备注 <em>选填</em></span>
+        <textarea id="fNote" rows="2" maxlength="200" placeholder="想写点什么就写点什么"></textarea>
+      </label>
+      <p class="form-error" id="formError" hidden></p>
+      <div class="sheet-actions">
+        <button type="button" class="btn btn-ghost" data-close="form">取消</button>
+        <button type="submit" class="btn btn-primary">保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 收款码覆盖层 -->
+<div class="overlay" id="payOverlay" hidden>
+  <div class="overlay-backdrop" data-close="pay"></div>
+  <div class="sheet pay-card" role="dialog" aria-modal="true" aria-labelledby="payTitle">
+    <div class="sheet-head">
+      <h3 id="payTitle">扫码支付</h3>
+      <button class="icon-btn" type="button" data-close="pay" aria-label="关闭">×</button>
+    </div>
+    <div class="pay-body">
+      <div class="pay-name" id="payName">—</div>
+      <div class="pay-amount" id="payAmount">¥0.00</div>
+      <div class="qr-wrap">
+        <img id="payQr" src="./qrcode.png" alt="收款码">
+        <div class="qr-fallback" id="qrFallback" hidden>
+          <span>收款码</span>
+          <small>请把 qrcode.png 放在本页面同一目录下</small>
+          <button type="button" class="qr-retry" id="qrRetry">重新加载</button>
+        </div>
+      </div>
+      <p class="pay-tip">请扫码支付 <b id="payTipAmount">¥0.00</b></p>
+      <p class="pay-note" id="payNote"></p>
+      <div class="sheet-actions">
+        <button type="button" class="btn btn-ghost" data-close="pay">关闭</button>
+        <button type="button" class="btn btn-primary" id="payMove">已支付 · 记入已消费</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ===================== 基础工具 ===================== */
+  var STORAGE_KEY = 'bill-records-v1';
+  function $(id) { return document.getElementById(id); }
+  function $$(sel, root) {
+    return Array.prototype.slice.call((root || document).querySelectorAll(sel));
+  }
+  function uid() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+      return window.crypto.randomUUID();
+    }
+    return 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+  function money(n) {
+    return '¥' + Number(n || 0).toLocaleString('zh-CN', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  /* ===================== 数据层（localStorage） ===================== */
+  function normalize(r) {
+    if (!r || typeof r !== 'object') return null;
+    var amount = Number(r.amount);
+    if (!isFinite(amount)) amount = 0;
+    return {
+      id: String(r.id || uid()),
+      name: String(r.name == null ? '' : r.name),
+      amount: Math.max(0, Math.round(amount * 100) / 100),
+      note: String(r.note == null ? '' : r.note)
+    };
+  }
+  function loadData() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return { spent: [], wish: [] };
+      var d = JSON.parse(raw);
+      return {
+        spent: Array.isArray(d.spent) ? d.spent.map(normalize).filter(Boolean) : [],
+        wish:  Array.isArray(d.wish)  ? d.wish.map(normalize).filter(Boolean)  : []
+      };
+    } catch (e) {
+      return { spent: [], wish: [] };
+    }
+  }
+  function saveData() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {
+      /* 隐私模式或存储满：忽略即可，本次会话内仍可正常使用 */
+    }
+  }
+  var data = loadData();
+
+  function findIndex(key, id) {
+    for (var i = 0; i < data[key].length; i++) {
+      if (data[key][i].id === id) return i;
+    }
+    return -1;
+  }
+  function sum(key) {
+    var t = 0;
+    for (var i = 0; i < data[key].length; i++) t += data[key][i].amount;
+    return t;
+  }
+
+  /* ===================== 渲染 ===================== */
+  function rowHtml(key, r) {
+    var swipeable = key === 'wish';
+    var name = escapeHtml(r.name) || '未命名';
+    var note = r.note ? '<div class="row-note">' + escapeHtml(r.note) + '</div>' : '';
+    var id = escapeHtml(r.id);
+    var payBtn = swipeable
+      ? '<button type="button" class="act act-pay" data-act="pay" data-id="' + id + '">扫码支付</button>'
+      : '';
+    return '' +
+      '<article class="row' + (swipeable ? ' swipeable' : '') + '" data-id="' + id + '" data-list="' + key + '">' +
+        (swipeable ? '<div class="swipe-bg"><span>← 松开查看收款码</span></div>' : '') +
+        '<div class="row-inner">' +
+          '<div class="row-top">' +
+            '<span class="row-name">' + name + '</span>' +
+            '<span class="row-amount">' + money(r.amount) + '</span>' +
+          '</div>' +
+          note +
+          '<div class="row-actions">' +
+            payBtn +
+            '<button type="button" class="act" data-act="edit" data-id="' + id + '">编辑</button>' +
+            '<button type="button" class="act act-danger" data-act="del" data-id="' + id + '">删除</button>' +
+          '</div>' +
+        '</div>' +
+      '</article>';
+  }
+
+  function renderList(key, container) {
+    var list = data[key];
+    if (!list.length) {
+      container.innerHTML = '<div class="empty">还没有记录，点右上角「+ 添加」开始吧</div>';
+      return;
+    }
+    container.innerHTML = list.map(function (r) { return rowHtml(key, r); }).join('');
+    if (key === 'wish') {
+      $$('.row', container).forEach(bindSwipe);
+    }
+  }
+
+  function render() {
+    renderList('spent', $('listSpent'));
+    renderList('wish', $('listWish'));
+    $('sumSpent').textContent = money(sum('spent'));
+    $('sumWish').textContent = money(sum('wish'));
+    $('countSpent').textContent = String(data.spent.length);
+    $('countWish').textContent = String(data.wish.length);
+  }
+
+  /* ===================== 弹层通用 ===================== */
+  function syncScrollLock() {
+    var open = !$('formOverlay').hidden || !$('payOverlay').hidden;
+    document.body.classList.toggle('no-scroll', open);
+  }
+  function showOverlay(id) { $(id).hidden = false; syncScrollLock(); }
+  function hideOverlay(id) { $(id).hidden = true; syncScrollLock(); }
+
+  $$('[data-close]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      hideOverlay(el.getAttribute('data-close') === 'form' ? 'formOverlay' : 'payOverlay');
+    });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (!$('payOverlay').hidden) hideOverlay('payOverlay');
+    else if (!$('formOverlay').hidden) hideOverlay('formOverlay');
+  });
+
+  /* ===================== 添加 / 编辑 ===================== */
+  var formState = { key: 'spent', id: null };
+
+  function openForm(key, id) {
+    formState.key = key;
+    formState.id = id || null;
+    var r = null;
+    if (id) {
+      var i = findIndex(key, id);
+      if (i >= 0) r = data[key][i];
+    }
+    $('formTitle').textContent = r
+      ? '编辑记录'
+      : (key === 'spent' ? '添加到「已消费」' : '添加到「想买清单」');
+    $('fName').value = r ? r.name : '';
+    $('fAmount').value = r ? String(r.amount) : '';
+    $('fNote').value = r ? r.note : '';
+    $('formError').hidden = true;
+    showOverlay('formOverlay');
+    window.setTimeout(function () { $('fName').focus(); }, 80);
+  }
+
+  function showFormError(msg) {
+    $('formError').textContent = msg;
+    $('formError').hidden = false;
+  }
+
+  $$('[data-add]').forEach(function (b) {
+    b.addEventListener('click', function () { openForm(b.getAttribute('data-add'), null); });
+  });
+
+  $('recordForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var name = $('fName').value.trim();
+    var amountRaw = $('fAmount').value.trim();
+    var amount = Number(amountRaw);
+    var note = $('fNote').value.trim();
+
+    if (!name) { showFormError('请填写名称'); $('fName').focus(); return; }
+    if (amountRaw === '' || !isFinite(amount) || amount < 0) {
+      showFormError('请填写有效的金额（不小于 0）');
+      $('fAmount').focus();
+      return;
+    }
+    amount = Math.round(amount * 100) / 100;
+
+    if (formState.id) {
+      var i = findIndex(formState.key, formState.id);
+      if (i >= 0) {
+        data[formState.key][i] = { id: formState.id, name: name, amount: amount, note: note };
+      }
+    } else {
+      data[formState.key].push({ id: uid(), name: name, amount: amount, note: note });
+    }
+    saveData();
+    render();
+    hideOverlay('formOverlay');
+  });
+
+  /* ===================== 删除（二次确认，避免误触） ===================== */
+  var confirmTimer = null;
+  function clearConfirms() {
+    $$('.act-danger.confirming').forEach(function (b) {
+      b.classList.remove('confirming');
+      delete b.dataset.confirm;
+      b.textContent = '删除';
+    });
+  }
+  function removeRecord(key, id) {
+    var i = findIndex(key, id);
+    if (i < 0) return;
+    data[key].splice(i, 1);
+    saveData();
+    render();
+  }
+
+  function onListClick(e) {
+    var btn = e.target && e.target.closest ? e.target.closest('[data-act]') : null;
+    if (!btn) return;
+    var row = btn.closest('.row');
+    if (!row) return;
+    var key = row.getAttribute('data-list');
+    var id = btn.getAttribute('data-id');
+    var act = btn.getAttribute('data-act');
+
+    if (act === 'edit') {
+      openForm(key, id);
+    } else if (act === 'pay') {
+      openPay(id);
+    } else if (act === 'del') {
+      window.clearTimeout(confirmTimer);
+      if (btn.dataset.confirm === '1') {
+        clearConfirms();
+        removeRecord(key, id);
+      } else {
+        clearConfirms();
+        btn.dataset.confirm = '1';
+        btn.classList.add('confirming');
+        btn.textContent = '确认删除';
+        confirmTimer = window.setTimeout(clearConfirms, 3000);
+      }
+    }
+  }
+  $('listSpent').addEventListener('click', onListClick);
+  $('listWish').addEventListener('click', onListClick);
+
+  /* ===================== 收款码覆盖层 ===================== */
+  var payId = null;
+  var qrFailed = false;
+  var qrImg = $('payQr');
+
+  function syncQr() {
+    qrImg.hidden = qrFailed;
+    $('qrFallback').hidden = !qrFailed;
+  }
+  qrImg.addEventListener('load', function () { qrFailed = false; syncQr(); });
+  qrImg.addEventListener('error', function () { qrFailed = true; syncQr(); });
+  if (qrImg.complete && qrImg.naturalWidth === 0) qrFailed = true;
+  syncQr();
+
+  $('qrRetry').addEventListener('click', function () {
+    qrFailed = false;
+    syncQr();
+    qrImg.src = './qrcode.png?retry=' + Date.now();
+  });
+
+  function openPay(id) {
+    var i = findIndex('wish', id);
+    if (i < 0) return;
+    var r = data.wish[i];
+    payId = id;
+    var amt = money(r.amount);
+    $('payName').textContent = r.name || '未命名';
+    $('payAmount').textContent = amt;
+    $('payTipAmount').textContent = amt;
+    $('payNote').textContent = r.note ? '备注：' + r.note : '';
+    syncQr();
+    showOverlay('payOverlay');
+  }
+
+  $('payMove').addEventListener('click', function () {
+    var i = findIndex('wish', payId);
+    if (i >= 0) {
+      var r = data.wish.splice(i, 1)[0];
+      data.spent.push(r);
+      saveData();
+      render();
+    }
+    payId = null;
+    hideOverlay('payOverlay');
+  });
+
+  /* ===================== 左划手势（Pointer Events：触摸 + 鼠标拖拽通用） ===================== */
+  var SWIPE_THRESHOLD = 80;   // 超过该距离即触发
+  var MAX_SWIPE = 150;        // 最大可拖动距离
+
+  function bindSwipe(row) {
+    var inner = row.querySelector('.row-inner');
+    var bg = row.querySelector('.swipe-bg');
+    var startX = 0, startY = 0, axis = null, offset = 0;
+    var active = false, pointerId = null;
+
+    function reset(animate) {
+      inner.style.transition = animate ? 'transform .25s cubic-bezier(.2,.8,.2,1)' : 'none';
+      inner.style.transform = 'translateX(0)';
+      offset = 0;
+      if (bg) bg.classList.remove('ready');
+      if (animate) {
+        window.setTimeout(function () { inner.style.transition = ''; }, 270);
+      }
+    }
+
+    row.addEventListener('pointerdown', function (e) {
+      if (e.target && e.target.closest && e.target.closest('button')) return; // 按钮不参与滑动
+      if (!$('payOverlay').hidden || !$('formOverlay').hidden) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      active = true;
+      pointerId = e.pointerId;
+      startX = e.clientX;
+      startY = e.clientY;
+      axis = null;
+      offset = 0;
+      inner.style.transition = 'none';
+      try { row.setPointerCapture(pointerId); } catch (err) { /* 忽略 */ }
+    });
+
+    row.addEventListener('pointermove', function (e) {
+      if (!active || e.pointerId !== pointerId) return;
+      var dx = e.clientX - startX;
+      var dy = e.clientY - startY;
+
+      if (axis === null) {
+        if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+        axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+        if (axis === 'y') { active = false; return; } // 纵向交给页面滚动
+      }
+
+      var raw = Math.min(0, dx); // 只响应左划
+      var damp = raw < -MAX_SWIPE
+        ? -MAX_SWIPE - (Math.abs(raw) - MAX_SWIPE) * 0.2
+        : raw;
+      offset = Math.max(-MAX_SWIPE - 20, damp);
+      inner.style.transform = 'translateX(' + offset + 'px)';
+      if (bg) bg.classList.toggle('ready', offset <= -SWIPE_THRESHOLD);
+      if (e.cancelable) e.preventDefault(); // 阻止鼠标拖拽选中文字
+    });
+
+    function finish(e) {
+      if (!active || (e && e.pointerId !== pointerId)) return;
+      active = false;
+      try { row.releasePointerCapture(pointerId); } catch (err) { /* 忽略 */ }
+      var triggered = axis === 'x' && offset <= -SWIPE_THRESHOLD;
+      var id = row.getAttribute('data-id');
+      reset(true);
+      axis = null;
+      if (triggered) {
+        window.setTimeout(function () { openPay(id); }, 130);
+      }
+    }
+    row.addEventListener('pointerup', finish);
+    row.addEventListener('pointercancel', finish);
+  }
+
+  /* ===================== 启动 ===================== */
+  render();
+})();
+</script>
+</body>
+</html>
