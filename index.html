@@ -249,6 +249,8 @@ input, textarea, select { outline: none; }
 }
 .amount-field input::placeholder { color: var(--muted); opacity: .55; }
 .quick-cats { display: flex; flex-wrap: wrap; gap: 7px; }
+.quick-cats.chips-scroll { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; -webkit-overflow-scrolling: touch; }
+.quick-cats.chips-scroll::-webkit-scrollbar { display: none; }
 .quick-actions { display: flex; gap: 8px; margin-top: 14px; }
 .quick-actions .btn { flex: 1; }
 
@@ -376,6 +378,20 @@ input, textarea, select { outline: none; }
 .segment button.on { background: var(--surface); color: var(--ink); font-weight: 700; box-shadow: 0 1px 4px rgba(20,35,26,.08); }
 .cycle-days { display: flex; flex-wrap: wrap; gap: 7px; }
 .cycle-days .chip { flex: 1 1 auto; min-width: 60px; text-align: center; }
+/* 分类管理 */
+.cat-list { display: flex; flex-direction: column; gap: 6px; max-height: 34vh; overflow-y: auto; }
+.cat-row { display: flex; align-items: center; gap: 9px; }
+.cat-swatch { width: 26px; height: 26px; flex: none; border-radius: 8px; border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
+.cat-name-input {
+  flex: 1; min-width: 0; background: var(--surface-soft); border: 1px solid transparent;
+  border-radius: 9px; padding: 7px 10px; font-size: 13px; color: var(--ink);
+}
+.cat-name-input:focus { outline: none; border-color: var(--primary); background: var(--surface); }
+.cat-used { font-size: 11px; color: var(--muted); flex: none; min-width: 30px; text-align: right; }
+.cat-del { width: 28px; height: 28px; flex: none; border-radius: 8px; color: var(--muted); font-size: 19px; line-height: 1; }
+.cat-del:hover { color: var(--danger, #C4534B); background: var(--surface-soft); }
+.cat-add { display: flex; align-items: center; gap: 9px; }
+.cat-add .btn { flex: none; }
 .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--divider); font-size: 13px; }
 .toggle-row:last-of-type { border-bottom: 0; }
 .toggle { width: 42px; height: 24px; border-radius: 99px; background: var(--line); position: relative; flex: none; transition: background .15s ease; }
@@ -455,15 +471,25 @@ input, textarea, select { outline: none; }
   const KEY = 'yueyu.v1';
   const REPO_URL = 'https://github.com/JJ790-D/yueyu';
 
-  const CATS = [
-    { key: '食堂', color: '#2F7D5D', soft: '#E8F3EC' },
-    { key: '外卖', color: '#D9964B', soft: '#FBF1E2' },
-    { key: '交通', color: '#5B7FC7', soft: '#EAF0FA' },
-    { key: '教材', color: '#9A7BC4', soft: '#F2ECFA' },
-    { key: '日用', color: '#4FA894', soft: '#E5F3EF' },
-    { key: '娱乐', color: '#DD8172', soft: '#FBEBE7' },
+  // 默认分类（可在「我的 → 分类管理」里增删改名改色）
+  const DEFAULT_CATS = [
+    { key: '食堂', color: '#2F7D5D' }, { key: '外卖', color: '#D9964B' },
+    { key: '早餐', color: '#C9A227' }, { key: '水果零食', color: '#7BA05B' },
+    { key: '交通', color: '#5B7FC7' }, { key: '打车', color: '#4F6FB0' },
+    { key: '共享单车', color: '#5FA8A0' },
+    { key: '教材', color: '#9A7BC4' }, { key: '文具', color: '#8A6FB5' },
+    { key: '打印复印', color: '#7C7FB8' }, { key: '培训考证', color: '#6E64A8' },
+    { key: '日用', color: '#4FA894' }, { key: '衣服鞋包', color: '#C77BA0' },
+    { key: '理发美妆', color: '#D08A9E' }, { key: '话费网费', color: '#5B96B5' },
+    { key: '医疗', color: '#D97575' }, { key: '健身运动', color: '#4E9C7A' },
+    { key: '娱乐', color: '#DD8172' }, { key: '游戏', color: '#9B72C4' },
+    { key: '旅行', color: '#5AA0C4' }, { key: '礼物请客', color: '#C77BA0' },
+    { key: '房租水电', color: '#7A8A7F' }, { key: '电子产品', color: '#6E7FB0' },
+    { key: '其他', color: '#94A09A' },
   ];
-  const CAT = Object.fromEntries(CATS.map(c => [c.key, c]));
+  const CAT_PALETTE = ['#2F7D5D', '#D9964B', '#5B7FC7', '#9A7BC4', '#4FA894', '#DD8172',
+                       '#C77BA0', '#5AA0C4', '#C9A227', '#7BA05B', '#D97575', '#6E7FB0'];
+  const CAT_SOFT_FALLBACK = { color: '#6E7A72', soft: '#ECF0ED' };
   const THEMES = [
     { key: 'moss', name: '青苔', color: '#2F7D5D' },
     { key: 'peach', name: '蜜桃', color: '#D97A6C' },
@@ -570,6 +596,35 @@ input, textarea, select { outline: none; }
     return (r * 0.299 + g * 0.587 + b * 0.114) > 155 ? '#14231B' : '#FFFFFF';
   }
 
+  /* ---------- 分类工具 ---------- */
+  const validColor = c => /^#[0-9a-fA-F]{6}$/.test(c || '');
+  const catSoft = c => mix(c, '#FFFFFF', 0.88);                 // 由主色派生浅底色
+  const catOf = key => state.cats.find(c => c.key === key);      // 可能已被删除 → undefined
+  function catStyle(key) {
+    const c = catOf(key);
+    return c ? { color: c.color, soft: catSoft(c.color) } : CAT_SOFT_FALLBACK;
+  }
+  // 归一化分类表：保留自定义项，丢弃无效项，最多 40 个，名字去重
+  function normalizeCats(raw) {
+    const arr = Array.isArray(raw) ? raw : DEFAULT_CATS;
+    const seen = new Set(), out = [];
+    for (const c of arr) {
+      if (!c || typeof c !== 'object') continue;
+      const key = String(c.key ?? '').trim().slice(0, 8);
+      if (!key || seen.has(key) || key === '全部') continue;
+      seen.add(key);
+      out.push({ key, color: validColor(c.color) ? c.color : CAT_PALETTE[out.length % CAT_PALETTE.length] });
+      if (out.length >= 40) break;
+    }
+    return out.length ? out : DEFAULT_CATS.map(c => ({ ...c }));
+  }
+  // 账目里出现过、但已从分类表删除的「历史分类」，用兜底样式显示，统计/筛选仍覆盖
+  function usedCatKeys() {
+    const keys = state.cats.map(c => c.key);
+    for (const e of state.expenses) if (e.category && !keys.includes(e.category)) keys.push(e.category);
+    return keys;
+  }
+
   /* ---------- 数据 ---------- */
   function defaultTheme() {
     return { preset: 'moss', accent: null, radius: 20, font: 'normal',
@@ -598,6 +653,7 @@ input, textarea, select { outline: none; }
   }
   function blankState() {
     return { version: 2, cycle: 'month', cycleDay: 1,
+             cats: DEFAULT_CATS.map(c => ({ ...c })),
              budget: 2000, savingsGoal: 0, expenses: [], wishes: [], savings: [],
              demo: false, invite: makeInvite(), theme: defaultTheme() };
   }
@@ -644,11 +700,13 @@ input, textarea, select { outline: none; }
     return {
       version: 2,
       cycle, cycleDay: clampCycleDay(s.cycleDay, cycle),
+      cats: normalizeCats(s.cats),
       budget: Number(s.budget) > 0 ? Number(s.budget) : 2000,
       savingsGoal: Number(s.savingsGoal) > 0 ? Number(s.savingsGoal) : 0,
       expenses: (s.expenses || []).filter(e => e && Number(e.amount) > 0).map(e => ({
         id: e.id || uid(), amount: Number(e.amount) || 0,
-        category: CAT[e.category] ? e.category : '日用',
+        // 不再强制改成「日用」：自定义 / 已删分类的历史账目都按原名保留
+        category: String(e.category || '').trim().slice(0, 8) || '其他',
         note: String(e.note || ''), date: /^\d{4}-\d{2}-\d{2}$/.test(e.date) ? e.date : today(),
         createdAt: e.createdAt || new Date().toISOString(),
       })),
@@ -669,7 +727,11 @@ input, textarea, select { outline: none; }
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) return normalize(JSON.parse(raw));
+      if (raw) {
+        const parsed = normalize(JSON.parse(raw));
+        save(parsed); // 把补齐的新字段（如 cats / cycle）写回，保证升级后导出备份也完整
+        return parsed;
+      }
     } catch (err) { /* 存储不可用或数据损坏时降级为空白账本 */ }
     const fresh = blankState();
     // 单文件版：首次打开自动带示例数据；点「清空，记我自己的」后不再出现
@@ -687,7 +749,7 @@ input, textarea, select { outline: none; }
   const initialHash = location.hash.slice(1);
   const ui = {
     tab: ['home', 'list', 'wish', 'me'].includes(initialHash) ? initialHash : 'home',
-    quickCat: '食堂', quickAmount: '', quickNote: '',
+    quickCat: '食堂', quickAmount: '', quickNote: '', catColor: CAT_PALETTE[0],
     listPeriod: currentPeriodKey(), listCat: '全部',
   };
 
@@ -743,8 +805,12 @@ input, textarea, select { outline: none; }
     </div>`;
   }
   function categoryBreakdown(pk) {
-    return CATS.map(c => ({ ...c, value: sum(periodExpenses(pk).filter(e => e.category === c.key)) }))
-      .filter(c => c.value > 0).sort((a, b) => b.value - a.value);
+    const rows = periodExpenses(pk);
+    return usedCatKeys().map(key => {
+      const st = catStyle(key);
+      return { key, color: st.color, soft: st.soft,
+               value: sum(rows.filter(e => e.category === key)) };
+    }).filter(c => c.value > 0).sort((a, b) => b.value - a.value);
   }
 
   /* ---------------- 首页 ---------------- */
@@ -797,7 +863,7 @@ input, textarea, select { outline: none; }
       <span class="val num">${yuan(c.value)}</span><span class="pct num">${Math.round(c.value / spent * 100)}%</span>
     </div>`).join('') : `<p class="mini">还没有支出，记下第一笔就能看到钱花哪儿了。</p>`;
     const recentRows = recent.length ? recent.map(e => {
-      const c = CAT[e.category] || CAT['日用'];
+      const c = catStyle(e.category);
       return `<div class="record">
         <div class="rec-dot" style="background:${c.soft};color:${c.color}">${esc(e.category)}</div>
         <div class="rec-main"><div class="rec-name">${esc(e.note || e.category)}</div>
@@ -805,7 +871,7 @@ input, textarea, select { outline: none; }
         <div class="rec-amount num">-${yuan(e.amount)}</div></div>`;
     }).join('') : empty(`${cycleName()}还是一张白纸`, '付完钱回到首页，输个金额、点个分类就好。');
 
-    const chips = CATS.map(c => `<button type="button" class="chip ${ui.quickCat === c.key ? 'on' : 'line'}"
+    const chips = state.cats.map(c => `<button type="button" class="chip ${ui.quickCat === c.key ? 'on' : 'line'}"
       data-action="quick-cat" data-cat="${esc(c.key)}">${esc(c.key)}</button>`).join('');
 
     return head(`${periodLabel(pk)} · 月余`, '嗨，今天也记一笔', '把钱花在哪儿，一眼看清',
@@ -826,7 +892,7 @@ input, textarea, select { outline: none; }
           <div class="amount-field"><span class="cur">¥</span>
             <input id="quickAmount" type="text" inputmode="decimal" autocomplete="off"
               placeholder="0.00" value="${esc(ui.quickAmount)}" aria-label="金额"></div>
-          <div class="quick-cats">${chips}</div>
+          <div class="chips chips-scroll quick-cats">${chips}</div>
           <input id="quickNote" class="field" style="margin-top:12px" type="text" maxlength="40"
             placeholder="备注（选填）· 二食堂 麻辣香锅" value="${esc(ui.quickNote)}" aria-label="备注">
           <div class="quick-actions"><button class="btn primary full" data-action="quick-save" type="button">记下这笔</button></div>
@@ -858,7 +924,7 @@ input, textarea, select { outline: none; }
     const top = categoryBreakdown(pk)[0];
     const daysForAvg = daysElapsed(pk);
 
-    const filters = ['全部', ...CATS.map(c => c.key)].map(k =>
+    const filters = ['全部', ...usedCatKeys()].map(k =>
       `<button type="button" class="chip ${ui.listCat === k ? 'on' : 'line'}"
         data-action="list-cat" data-cat="${esc(k)}">${esc(k)}</button>`).join('');
 
@@ -874,7 +940,7 @@ input, textarea, select { outline: none; }
       if (g.date === today()) label = '今天 · ' + label;
       else if (g.date === isoDay(y)) label = '昨天 · ' + label;
       return `<div class="day-label">${esc(label)}</div><section class="card tight">${g.rows.map(e => {
-        const c = CAT[e.category] || CAT['日用'];
+        const c = catStyle(e.category);
         return `<div class="record">
           <div class="rec-dot" style="background:${c.soft};color:${c.color}">${esc(e.category)}</div>
           <div class="rec-main"><div class="rec-name">${esc(e.note || e.category)}</div>
@@ -952,6 +1018,7 @@ input, textarea, select { outline: none; }
     const iconSpark = '<path d="M12 3.5 13.8 9l5.7 1.8-5.7 1.8L12 18.3l-1.8-5.7-5.7-1.8L10.2 9z"/>';
     const iconTrash = '<path d="M5 7h14M9 7V4.5h6V7m-8 0 1 13h8l1-13M10 11v5M14 11v5"/>';
     const iconCycle = '<path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v4h-4"/><path d="M12 8v4l3 2"/>';
+    const iconTag = '<path d="M20.6 13.4 12 22l-9-9V4h9l8.6 8.6a1.4 1.4 0 0 1 0 2Z"/><circle cx="7.5" cy="7.5" r="1.4"/>';
     const offline = false;
 
     return head('给朋友也用上', '给朋友也用上', '不用注册，发个链接就行')
@@ -966,6 +1033,7 @@ input, textarea, select { outline: none; }
         </section>`
       + `<h2 class="section-title">账本设置</h2>
         <section class="card list-card">
+          ${item(iconTag, '分类管理', '增删改名改色，记账选项随你定', 'set-cats', `${state.cats.length} 类`)}
           ${item(iconCycle, '发钱周期', `${cycleUnit()}发一次 · ${esc(cycleStartText())}`, 'set-cycle', cycleUnit())}
           ${item(iconBudget, `${cycleUnit()}预算`, '按自己的生活费改，切周期会按比例换算', 'set-budget', yuan(state.budget))}
           ${item(iconPig, `${cycleUnit()}存钱目标`, '打算存下的钱，会从可花余额里扣掉', 'set-saving-goal', state.savingsGoal ? yuan(state.savingsGoal) : '未设置')}
@@ -980,7 +1048,7 @@ input, textarea, select { outline: none; }
           没有广告、没有账号、不联网上传，数据只存在这台设备的浏览器里。<br>
           开源在 <a class="link" href="${REPO_URL}" target="_blank" rel="noopener">GitHub</a>，欢迎拿去改成自己的版本。
         </p></section>`
-      + `<p class="footer-note">月余 · v1.2 · 单文件版 · 所有资源已内置，断网双击也能用<br>
+      + `<p class="footer-note">月余 · v1.3 · 单文件版 · 所有资源已内置，断网双击也能用<br>
           换浏览器或清理缓存会丢数据，记得偶尔导出备份</p>`;
   }
 
@@ -988,6 +1056,8 @@ input, textarea, select { outline: none; }
   function render(opts = {}) {
     const scroller = $('#scroll');
     const top = opts.keepScroll === false ? 0 : scroller.scrollTop;
+    // 分类被删后，选中项兜底到现存分类
+    if (!catOf(ui.quickCat) && state.cats.length) ui.quickCat = state.cats[0].key;
     $('#view').innerHTML = { home: renderHome, list: renderList, wish: renderWish, me: renderMe }[ui.tab]();
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === ui.tab));
     scroller.scrollTop = top;
@@ -1076,6 +1146,93 @@ input, textarea, select { outline: none; }
     ui.listPeriod = currentPeriodKey();
     ui.listCat = '全部';
     save(); render(); refreshCycleModal();
+  }
+
+  /* ---------------- 分类管理面板 ---------------- */
+  function catsModalBody() {
+    const rows = state.cats.map((c, i) => {
+      const used = state.expenses.filter(e => e.category === c.key).length;
+      return `<div class="cat-row" data-i="${i}">
+        <span class="cat-swatch" style="background:${c.color}" data-action="cat-recolor" data-i="${i}" title="点一下换颜色"></span>
+        <input class="cat-name-input" type="text" maxlength="8" value="${esc(c.key)}" data-cat-index="${i}"
+          aria-label="分类名" data-action="cat-rename-input">
+        <span class="cat-used">${used ? used + ' 笔' : '未用'}</span>
+        <button class="cat-del" data-action="cat-del" data-i="${i}" aria-label="删除${esc(c.key)}" type="button">×</button>
+      </div>`;
+    }).join('');
+    const swatches = CAT_PALETTE.slice(0, 8).map(color =>
+      `<button class="accent-dot ${ui.catColor === color ? 'on' : ''}" data-action="cat-pick-color" data-color="${color}"
+        style="background:${color}" aria-label="选颜色 ${color}" type="button"></button>`).join('');
+    return `<p>分类就是记账时的选项，也是「钱花哪儿了」的统计口径。名字点一下就能改，颜色点方块换。删掉分类不会删掉已记的账。</p>
+      <label class="modal-label">现有分类（${state.cats.length} / 40）</label>
+      <div class="cat-list">${rows}</div>
+      <label class="modal-label">新增一个分类</label>
+      <div class="cat-add">
+        <span class="cat-swatch" style="background:${esc(ui.catColor)}" title="新分类颜色"></span>
+        <input class="cat-name-input" id="newCatName" type="text" maxlength="8" placeholder="比如 宠物" aria-label="新分类名字">
+        <button class="btn sm primary" data-action="cat-add" type="button">添加</button>
+      </div>
+      <div class="accent-row" style="margin-top:10px">${swatches}</div>
+      <div class="accent-extra">
+        <input class="color-input" type="color" id="newCatColorCustom" value="${esc(ui.catColor)}" aria-label="自定义新分类颜色">
+        <span class="accent-tip">也可以自己挑颜色</span></div>`;
+  }
+  function openCatsModal() {
+    openModal({ title: '管理你的分类', body: catsModalBody(),
+                confirmText: '完成', onConfirm: () => { save(); render(); }, kind: 'cats' });
+  }
+  function refreshCatsModal() {
+    if (modalKind !== 'cats' || $('#modal').hidden) return;
+    const body = $('#modalBody'), top = body.scrollTop;
+    // 先把正在编辑的输入框内容读回来，避免刷新丢失
+    body.querySelectorAll('[data-cat-index]').forEach(inp => {
+      const c = state.cats[Number(inp.dataset.catIndex)];
+      if (c && inp.value.trim()) c.key = inp.value.trim().slice(0, 8);
+    });
+    const newName = $('#newCatName', body);
+    const keepName = newName ? newName.value : '';
+    body.innerHTML = catsModalBody();
+    const restored = $('#newCatName', body);
+    if (restored) restored.value = keepName;
+    body.scrollTop = top;
+  }
+  function renameCat(index, newKey) {
+    const key = String(newKey || '').trim().slice(0, 8);
+    if (!key) { showToast('名字不能空着'); return; }
+    if (key === '全部') { showToast('「全部」是保留字，换个名字'); return; }
+    const old = state.cats[index];
+    if (!old) return;
+    if (state.cats.some((c, i) => i !== index && c.key === key)) { showToast('已经有同名分类了'); return; }
+    if (old.key === key) return;
+    const from = old.key;
+    old.key = key;
+    // 已有账目同步改成新名字，历史不丢
+    state.expenses.forEach(e => { if (e.category === from) e.category = key; });
+    if (ui.quickCat === from) ui.quickCat = key;
+    if (ui.listCat === from) ui.listCat = key;
+    save(); render(); refreshCatsModal();
+  }
+  function addCat() {
+    const name = String($('#newCatName')?.value || '').trim().slice(0, 8);
+    if (!name) { showToast('先给分类起个名字'); return; }
+    if (name === '全部' || state.cats.some(c => c.key === name)) { showToast('名字重复或是保留字，换一个'); return; }
+    if (state.cats.length >= 40) { showToast('最多 40 个分类啦'); return; }
+    state.cats.push({ key: name, color: ui.catColor });
+    save(); render(); refreshCatsModal(); showToast(`加上了「${name}」`);
+  }
+  function delCat(index) {
+    const c = state.cats[index];
+    if (!c) return;
+    const used = state.expenses.filter(e => e.category === c.key).length;
+    openModal({ title: `删掉「${esc(c.key)}」？`,
+      body: `<p>分类会从记账选项里移除。${used ? `已经记在这一类的 ${used} 笔账不会丢，仍会在明细和统计里按「${esc(c.key)}」显示。` : '这一类还没有记过账。'}</p>`,
+      confirmText: '删掉', danger: true, kind: 'cats-del',
+      onConfirm: () => {
+        const removed = state.cats.splice(index, 1)[0];
+        if (!state.cats.length) state.cats = normalizeCats([]); // 至少留一组兜底
+        if (ui.quickCat === removed.key) ui.quickCat = state.cats[0].key;
+        save(); render(); openCatsModal(); showToast('分类已移除，已记的账还在');
+      } });
   }
 
   /* ---------------- 外观设置面板 ---------------- */
@@ -1197,7 +1354,7 @@ input, textarea, select { outline: none; }
         openModal({ title: '买了就记一笔',
           body: `<p>把「${esc(w.name)}」 ${yuan(w.price)} 记进${cycleName()}的支出？记完会从心愿清单里移走。</p>
                  <label class="field-label" for="buyCat">算在哪一类</label>
-                 <select class="field" id="buyCat">${CATS.map(c => `<option value="${esc(c.key)}">${esc(c.key)}</option>`).join('')}</select>`,
+                 <select class="field" id="buyCat">${state.cats.map(c => `<option value="${esc(c.key)}"${c.key === ui.quickCat ? ' selected' : ''}>${esc(c.key)}</option>`).join('')}</select>`,
           confirmText: '记下这一笔',
           onConfirm: (body) => {
             addExpense(w.price, $('#buyCat', body).value, w.name);
@@ -1212,6 +1369,17 @@ input, textarea, select { outline: none; }
         openModal({ title: '从清单里拿掉？', body: `<p>「${esc(w.name)}」就不买了？</p>`,
           confirmText: '拿掉', danger: true,
           onConfirm: () => { state.wishes = state.wishes.filter(x => x.id !== w.id); save(); render(); showToast('已经拿掉了'); } });
+        break;
+      }
+
+      case 'set-cats': openCatsModal(); break;
+      case 'cat-pick-color':
+        ui.catColor = el.dataset.color; refreshCatsModal(); break;
+      case 'cat-add': addCat(); break;
+      case 'cat-del': delCat(Number(el.dataset.i)); break;
+      case 'cat-recolor': {
+        const c = state.cats[Number(el.dataset.i)];
+        if (c) { c.color = ui.catColor; save(); refreshCatsModal(); }
         break;
       }
 
@@ -1360,6 +1528,10 @@ input, textarea, select { outline: none; }
     if (ev.target.id === 'customAccent' && /^#[0-9a-fA-F]{6}$/.test(ev.target.value)) {
       state.theme.accent = ev.target.value;
       save(); applyTheme(); refreshThemeModal();
+    } else if (ev.target.id === 'newCatColorCustom' && /^#[0-9a-fA-F]{6}$/.test(ev.target.value)) {
+      ui.catColor = ev.target.value; refreshCatsModal();
+    } else if (ev.target.matches?.('[data-cat-index]')) {
+      renameCat(Number(ev.target.dataset.catIndex), ev.target.value);
     }
   });
   $('#modalConfirm').addEventListener('click', () => {
